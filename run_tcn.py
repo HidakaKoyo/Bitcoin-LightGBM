@@ -1,4 +1,5 @@
 import os
+import argparse
 import time
 import logging
 import pandas as pd
@@ -16,9 +17,7 @@ from sklearn.preprocessing import StandardScaler
 def setup_logger(log_file="training.log"):
     logger = logging.getLogger(__name__)
     logger.setLevel(logging.INFO)
-    # NOTE: すでにハンドラがある場合はスキップ
     if not logger.handlers:
-        # NOTE: フォーマッタ
         formatter = logging.Formatter("%(asctime)s — %(levelname)s — %(message)s")
 
         # NOTE: ファイル出力用ハンドラ
@@ -26,11 +25,10 @@ def setup_logger(log_file="training.log"):
         file_handler.setFormatter(formatter)
         logger.addHandler(file_handler)
 
-        # NOTE: コンソール出力用ハンドラ(オプション)
+        # NOTE: コンソール出力用ハンドラ
         console_handler = logging.StreamHandler()
         console_handler.setFormatter(formatter)
         logger.addHandler(console_handler)
-
     return logger
 
 
@@ -210,26 +208,47 @@ def create_sequences(data, seq_len):
 # =========================================
 #  NOTE: メイン処理
 # =========================================
-def main():
-    logger = setup_logger(log_file="training.log")
 
-    # NOTE: 全体実行時間の測定開始
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--csv_path",
+        type=str,
+        default="./data/btcusd_1-min_data.csv",
+        help="Path to the input CSV data.",
+    )
+    parser.add_argument(
+        "--output_dir",
+        type=str,
+        default="./output",
+        help="Directory to save logs and model artifacts.",
+    )
+    parser.add_argument(
+        "--epochs", type=int, default=10, help="Number of epochs for training."
+    )
+    args = parser.parse_args()
+
+    # NOTE: 出力先ディレクトリを作成
+    os.makedirs(args.output_dir, exist_ok=True)
+    log_file = os.path.join(args.output_dir, "training.log")
+
+    logger = setup_logger(log_file)
     start_time_overall = time.time()
 
-    # NOTE: GPUが使用可能か判定
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     logger.info(f"Using device: {device}")
 
     # NOTE: データ読み込み
-    data = load_data(csv_path="./data/btcusd_1-min_data.csv")
+    data = load_data(args.csv_path)
     logger.info(f"Data loaded. Total samples: {len(data)}")
 
-    # NOTE: スケーリング (推奨)
+    # NOTE: スケーリング
     scaler = StandardScaler()
     data_scaled = scaler.fit_transform(data.reshape(-1, 1)).flatten()
 
-    # NOTE: シーケンス変換
-    seq_len = 30  # NOTE: 過去30分のデータを使って次の1分を予測
+    # NOTE: シーケンス作成
+    seq_len = 30
     X, y = create_sequences(data_scaled, seq_len)
     logger.info(f"Sequence dataset created. X.shape={X.shape}, y.shape={y.shape}")
 
@@ -241,7 +260,6 @@ def main():
     y_train, y_test = y[:train_size], y[train_size:]
     logger.info(f"Train size: {train_size}, Test size: {test_size}")
 
-    # NOTE: DataLoader作成
     class TimeSeriesDataset(torch.utils.data.Dataset):
         def __init__(self, X, y):
             self.X = X
@@ -255,6 +273,7 @@ def main():
 
     train_dataset = TimeSeriesDataset(X_train, y_train)
     test_dataset = TimeSeriesDataset(X_test, y_test)
+
     batch_size = 64
     train_loader = torch.utils.data.DataLoader(
         train_dataset, batch_size=batch_size, shuffle=True
@@ -263,10 +282,8 @@ def main():
         test_dataset, batch_size=batch_size, shuffle=False
     )
 
-    # ---------------------------------------
-    #  NOTE: モデル構築
-    # ---------------------------------------
-    tcn_channels = [32, 32, 32]  # 必要に応じて調整
+    # NOTE: モデル定義
+    tcn_channels = [32, 32, 32]
     model = TCNRegressor(
         input_size=1, tcn_channels=tcn_channels, kernel_size=3, dropout=0.2
     )
@@ -275,32 +292,23 @@ def main():
     criterion = nn.MSELoss()
     optimizer = optim.Adam(model.parameters(), lr=1e-3)
 
-    logger.info("Starting training...")
-
-    # ========================================
-    #  NOTE: GPU上での演算時間計測
-    # ========================================
-    start_gpu_event = torch.cuda.Event(enable_timing=True)
-    end_gpu_event = torch.cuda.Event(enable_timing=True)
-
-    # 訓練開始時にGPUイベントを記録
+    # NOTE: GPUイベント計測 (学習)
     if device.type == "cuda":
+        start_gpu_event = torch.cuda.Event(enable_timing=True)
+        end_gpu_event = torch.cuda.Event(enable_timing=True)
         start_gpu_event.record()
 
-    # ---------------------------------------
-    # NOTE: 学習ループ
-    # ---------------------------------------
-    epochs = 10
+    epochs = args.epochs
+    logger.info("Starting training...")
     for epoch in range(epochs):
         model.train()
         total_loss = 0.0
-
         for X_batch, y_batch in train_loader:
             X_batch = X_batch.to(device)
             y_batch = y_batch.to(device)
 
             optimizer.zero_grad()
-            outputs = model(X_batch)  # shape (batch, 1)
+            outputs = model(X_batch)
             loss = criterion(outputs.squeeze(), y_batch)
             loss.backward()
             optimizer.step()
@@ -310,18 +318,12 @@ def main():
         epoch_loss = total_loss / len(train_loader.dataset)
         logger.info(f"Epoch [{epoch+1}/{epochs}] - Train Loss: {epoch_loss:.6f}")
 
-    # NOTE: 訓練終了時にGPUイベントを記録
     if device.type == "cuda":
         end_gpu_event.record()
-        # NOTE: GPUの演算完了を待機(synchronize)
         torch.cuda.synchronize()
-        # NOTE: イベント間の経過時間 (ミリ秒->秒)
         gpu_time = start_gpu_event.elapsed_time(end_gpu_event) / 1000.0
         logger.info(f"Total GPU time (training loop): {gpu_time:.2f} sec")
 
-    # ---------------------------------------
-    # NOTE: テスト推論
-    # ---------------------------------------
     logger.info("Starting inference...")
     model.eval()
     predictions = []
@@ -330,32 +332,31 @@ def main():
         for X_batch, y_batch in test_loader:
             X_batch = X_batch.to(device)
             y_batch = y_batch.to(device)
-
-            outputs = model(X_batch).squeeze()  # shape: (batch,)
+            outputs = model(X_batch).squeeze()
             predictions.append(outputs.cpu().numpy())
             actuals.append(y_batch.cpu().numpy())
+
+    import numpy as np
 
     predictions = np.concatenate(predictions)
     actuals = np.concatenate(actuals)
 
-    # NOTE: スケーリングを元に戻す
     predictions_unscaled = scaler.inverse_transform(
         predictions.reshape(-1, 1)
     ).flatten()
     actuals_unscaled = scaler.inverse_transform(actuals.reshape(-1, 1)).flatten()
 
-    # NOTE: 評価指標
     rmse = np.sqrt(np.mean((predictions_unscaled - actuals_unscaled) ** 2))
     logger.info(f"Test RMSE: {rmse:.4f}")
 
-    # ---------------------------------------
-    # NOTE: 全体実行時間
-    # ---------------------------------------
+    # NOTE: 学習済みモデルを保存
+    model_path = os.path.join(args.output_dir, "tcn_model.pth")
+    torch.save(model.state_dict(), model_path)
+    logger.info(f"Model saved to {model_path}")
+
     end_time_overall = time.time()
     total_time = end_time_overall - start_time_overall
     logger.info(f"Overall execution time: {total_time:.2f} sec")
-
-    # NOTE: ログファイルには training.log に出力されます
 
 
 if __name__ == "__main__":
