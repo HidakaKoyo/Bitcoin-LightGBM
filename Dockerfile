@@ -25,4 +25,4 @@ COPY . /app
 RUN mkdir -p /app/artifacts
 
 # 実行コマンドを指定 (エントリポイント)
-ENTRYPOINT ["uv", "run", "python", "run_tcn.py"]
+# ENTRYPOINT ["uv", "run", "python", "run_tcn.py"]
