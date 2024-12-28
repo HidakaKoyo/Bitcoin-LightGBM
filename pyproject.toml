@@ -1,5 +1,5 @@
 [project]
-name = "bitcoin-lightgbm"
+name = "bitcoin-tcn"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"

@@ -8,7 +8,7 @@ resolution-markers = [
 ]
 
 [[package]]
-name = "bitcoin-lightgbm"
+name = "bitcoin-tcn"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
