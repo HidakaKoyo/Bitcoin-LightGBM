@@ -11,22 +11,22 @@ from sklearn.preprocessing import StandardScaler
 
 
 # =========================================
-#  ログ設定
+#  NOTE: ログ設定
 # =========================================
 def setup_logger(log_file="training.log"):
     logger = logging.getLogger(__name__)
     logger.setLevel(logging.INFO)
-    # すでにハンドラがある場合はスキップ
+    # NOTE: すでにハンドラがある場合はスキップ
     if not logger.handlers:
-        # フォーマッタ
+        # NOTE: フォーマッタ
         formatter = logging.Formatter("%(asctime)s — %(levelname)s — %(message)s")
 
-        # ファイル出力用ハンドラ
+        # NOTE: ファイル出力用ハンドラ
         file_handler = logging.FileHandler(log_file)
         file_handler.setFormatter(formatter)
         logger.addHandler(file_handler)
 
-        # コンソール出力用ハンドラ(オプション)
+        # NOTE: コンソール出力用ハンドラ(オプション)
         console_handler = logging.StreamHandler()
         console_handler.setFormatter(formatter)
         logger.addHandler(console_handler)
@@ -35,7 +35,7 @@ def setup_logger(log_file="training.log"):
 
 
 # =========================================
-#  TCNモデル定義
+#  NOTE: TCNモデル定義
 # =========================================
 class Chomp1d(nn.Module):
     """TCNの因果性(未来情報を使わない)を保つために余分なタイムステップをカットする"""
@@ -174,14 +174,14 @@ class TCNRegressor(nn.Module):
 
 
 # =========================================
-#  データ読み込み＆前処理
+#  NOTE: データ読み込み＆前処理
 # =========================================
 def load_data(csv_path="./data/btcusd_1-min_data.csv"):
     df = pd.read_csv(csv_path)
     df = df.sort_values("Timestamp").reset_index(drop=True)
 
-    # このサンプルではClose価格の1ステップ予測を行う
-    # 必要に応じてOpen, High, Low, Volumeなど追加特徴量にしてください
+    # NOTE: このサンプルではClose価格の1ステップ予測を行う
+    # NOTE: 必要に応じてOpen, High, Low, Volumeなど追加特徴量にする
     df = df.dropna(subset=["Close"])
     close_vals = df["Close"].values.astype(np.float32)
 
@@ -193,11 +193,10 @@ def create_sequences(data, seq_len):
     data: (N,) の1次元配列
     seq_len: 入力に使う過去ステップ数
     戻り値: X, y
-      X shape: (サンプル数, seq_len, 1)  [特徴量次元=1とする]
-      y shape: (サンプル数,)
+        X shape: (サンプル数, seq_len, 1)  [特徴量次元=1とする]
+        y shape: (サンプル数,)
     """
-    xs = []
-    ys = []
+    xs, ys = [], []
     for i in range(len(data) - seq_len):
         x = data[i : i + seq_len]
         y = data[i + seq_len]
@@ -209,34 +208,32 @@ def create_sequences(data, seq_len):
 
 
 # =========================================
-#  メイン処理
+#  NOTE: メイン処理
 # =========================================
 def main():
     logger = setup_logger(log_file="training.log")
 
-    # 全体実行時間の測定開始
+    # NOTE: 全体実行時間の測定開始
     start_time_overall = time.time()
 
-    # GPUが使用可能か判定
+    # NOTE: GPUが使用可能か判定
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     logger.info(f"Using device: {device}")
 
-    # ---------------------------------------
-    # データ読み込み
-    # ---------------------------------------
+    # NOTE: データ読み込み
     data = load_data(csv_path="./data/btcusd_1-min_data.csv")
     logger.info(f"Data loaded. Total samples: {len(data)}")
 
-    # スケーリング (推奨)
+    # NOTE: スケーリング (推奨)
     scaler = StandardScaler()
     data_scaled = scaler.fit_transform(data.reshape(-1, 1)).flatten()
 
-    # シーケンス変換
-    seq_len = 30  # 過去30分のデータを使って次の1分を予測
+    # NOTE: シーケンス変換
+    seq_len = 30  # NOTE: 過去30分のデータを使って次の1分を予測
     X, y = create_sequences(data_scaled, seq_len)
     logger.info(f"Sequence dataset created. X.shape={X.shape}, y.shape={y.shape}")
 
-    # データ分割
+    # NOTE: データ分割
     test_ratio = 0.1
     test_size = int(len(X) * test_ratio)
     train_size = len(X) - test_size
@@ -244,7 +241,7 @@ def main():
     y_train, y_test = y[:train_size], y[train_size:]
     logger.info(f"Train size: {train_size}, Test size: {test_size}")
 
-    # DataLoader作成
+    # NOTE: DataLoader作成
     class TimeSeriesDataset(torch.utils.data.Dataset):
         def __init__(self, X, y):
             self.X = X
@@ -267,7 +264,7 @@ def main():
     )
 
     # ---------------------------------------
-    # モデル構築
+    #  NOTE: モデル構築
     # ---------------------------------------
     tcn_channels = [32, 32, 32]  # 必要に応じて調整
     model = TCNRegressor(
@@ -281,7 +278,7 @@ def main():
     logger.info("Starting training...")
 
     # ========================================
-    #  GPU上での演算時間計測
+    #  NOTE: GPU上での演算時間計測
     # ========================================
     start_gpu_event = torch.cuda.Event(enable_timing=True)
     end_gpu_event = torch.cuda.Event(enable_timing=True)
@@ -291,7 +288,7 @@ def main():
         start_gpu_event.record()
 
     # ---------------------------------------
-    # 学習ループ
+    # NOTE: 学習ループ
     # ---------------------------------------
     epochs = 10
     for epoch in range(epochs):
@@ -313,17 +310,17 @@ def main():
         epoch_loss = total_loss / len(train_loader.dataset)
         logger.info(f"Epoch [{epoch+1}/{epochs}] - Train Loss: {epoch_loss:.6f}")
 
-    # 訓練終了時にGPUイベントを記録
+    # NOTE: 訓練終了時にGPUイベントを記録
     if device.type == "cuda":
         end_gpu_event.record()
-        # GPUの演算完了を待機(synchronize)
+        # NOTE: GPUの演算完了を待機(synchronize)
         torch.cuda.synchronize()
-        # イベント間の経過時間 (ミリ秒->秒)
+        # NOTE: イベント間の経過時間 (ミリ秒->秒)
         gpu_time = start_gpu_event.elapsed_time(end_gpu_event) / 1000.0
         logger.info(f"Total GPU time (training loop): {gpu_time:.2f} sec")
 
     # ---------------------------------------
-    # テスト推論
+    # NOTE: テスト推論
     # ---------------------------------------
     logger.info("Starting inference...")
     model.eval()
@@ -341,24 +338,24 @@ def main():
     predictions = np.concatenate(predictions)
     actuals = np.concatenate(actuals)
 
-    # スケーリングを元に戻す
+    # NOTE: スケーリングを元に戻す
     predictions_unscaled = scaler.inverse_transform(
         predictions.reshape(-1, 1)
     ).flatten()
     actuals_unscaled = scaler.inverse_transform(actuals.reshape(-1, 1)).flatten()
 
-    # 評価指標
+    # NOTE: 評価指標
     rmse = np.sqrt(np.mean((predictions_unscaled - actuals_unscaled) ** 2))
     logger.info(f"Test RMSE: {rmse:.4f}")
 
     # ---------------------------------------
-    # 全体実行時間
+    # NOTE: 全体実行時間
     # ---------------------------------------
     end_time_overall = time.time()
     total_time = end_time_overall - start_time_overall
     logger.info(f"Overall execution time: {total_time:.2f} sec")
 
-    # ログファイルには training.log に出力されます
+    # NOTE: ログファイルには training.log に出力されます
 
 
 if __name__ == "__main__":
