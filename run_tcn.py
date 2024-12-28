@@ -58,7 +58,7 @@ class TemporalBlock(nn.Module):
         dropout=0.2,
     ):
         super().__init__()
-        # 最初のConv
+        # NOTE: 最初のConv
         self.conv1 = nn.Conv1d(
             in_channels,
             out_channels,
@@ -71,7 +71,7 @@ class TemporalBlock(nn.Module):
         self.relu1 = nn.ReLU()
         self.dropout1 = nn.Dropout(dropout)
 
-        # 2つ目のConv
+        # NOTE: 2つ目のConv
         self.conv2 = nn.Conv1d(
             out_channels,
             out_channels,
@@ -84,7 +84,7 @@ class TemporalBlock(nn.Module):
         self.relu2 = nn.ReLU()
         self.dropout2 = nn.Dropout(dropout)
 
-        # 残差接続のための1x1Conv（チャネル数が合わない場合に対応）
+        # NOTE: 残差接続のための1x1Conv（チャネル数が合わない場合に対応）
         self.downsample = (
             nn.Conv1d(in_channels, out_channels, 1)
             if in_channels != out_channels
@@ -103,7 +103,7 @@ class TemporalBlock(nn.Module):
         out = self.relu2(out)
         out = self.dropout2(out)
 
-        # 残差接続
+        # NOTE: 残差接続
         res = x if self.downsample is None else self.downsample(x)
         return self.relu(out + res)
 
@@ -147,25 +147,25 @@ class TemporalConvNet(nn.Module):
 class TCNRegressor(nn.Module):
     def __init__(self, input_size, tcn_channels, kernel_size=2, dropout=0.2):
         super().__init__()
-        # TCN本体
+        # NOTE: TCN本体
         self.tcn = TemporalConvNet(
             num_inputs=input_size,
             num_channels=tcn_channels,
             kernel_size=kernel_size,
             dropout=dropout,
         )
-        # TCN出力 -> 全結合
-        # TCN出力のチャネル数 = tcn_channels[-1]、出力は1次元(Close価格の1ステップ予測)
+        # NOTE: TCN出力 -> 全結合
+        # NOTE: TCN出力のチャネル数 = tcn_channels[-1]、出力は1次元(Close価格の1ステップ予測)
         self.fc = nn.Linear(tcn_channels[-1], 1)
 
     def forward(self, x):
         """
         x shape: (batch, seq_len, input_size)
         """
-        # TCNは (batch, channel, seq_len) を期待
+        # NOTE: TCNは (batch, channel, seq_len) を期待
         x = x.permute(0, 2, 1)  # (batch, input_size, seq_len)
         tcn_out = self.tcn(x)  # (batch, tcn_channels[-1], seq_len)
-        # 最後のタイムステップのみ取り出して全結合へ
+        # NOTE: 最後のタイムステップのみ取り出して全結合へ
         last_step = tcn_out[:, :, -1]  # (batch, tcn_channels[-1])
         out = self.fc(last_step)  # (batch, 1)
         return out

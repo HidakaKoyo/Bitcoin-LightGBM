@@ -9,14 +9,11 @@ RUN apt-get update && apt-get install -y \
   git curl build-essential \
   && rm -rf /var/lib/apt/lists/*
 
-# Poetryのインストール
-# (Poetry公式のインストールスクリプトを使う方法でもOK)
+# uvのインストール
 RUN pip install uv
 
-# pyproject.toml & poetry.lock をコピー
+# pyproject.toml をコピー
 COPY pyproject.toml .
-# すでにpoetry.lockがある場合はコピー
-# COPY poetry.lock .
 
 # 依存関係をインストール
 RUN uv sync
@@ -28,4 +25,4 @@ COPY . /app
 RUN mkdir -p /app/artifacts
 
 # 実行コマンドを指定 (エントリポイント)
-ENTRYPOINT ["poetry", "run", "python", "train_tcn.py"]
+ENTRYPOINT ["uv", "run", "python", "run_tcn.py"]
