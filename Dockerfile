@@ -21,8 +21,5 @@ RUN uv sync
 # ソースコードをコピー (train_tcn.pyなど)
 COPY . /app
 
-# artifactsディレクトリを作成 (必要なら)
-RUN mkdir -p /app/artifacts
-
 # 実行コマンドを指定 (エントリポイント)
 # ENTRYPOINT ["uv", "run", "python", "run_tcn.py"]

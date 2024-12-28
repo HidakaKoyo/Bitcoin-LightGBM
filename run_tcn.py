@@ -202,6 +202,9 @@ def create_sequences(data, seq_len):
         ys.append(y)
     X = np.array(xs, dtype=np.float32)
     y = np.array(ys, dtype=np.float32)
+
+    X = X.reshape(X.shape[0], X.shape[1], 1)
+
     return X, y
 
 
